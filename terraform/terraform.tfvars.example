@@ -1,0 +1,2 @@
+proxmox_password = "a-remplacer"
+vm_password      = "a-remplacer"

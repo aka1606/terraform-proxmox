@@ -1,0 +1,25 @@
+---
+- name: configuration des vms ubuntu
+  hosts: k8s
+  become: true
+
+  tasks:
+    - name: reparer les dependances
+      command: apt --fix-broken install -y
+
+    - name: mettre a jour les paquets
+      apt:
+        update_cache: yes
+        upgrade: yes
+
+    - name: installer curl et vim
+      apt:
+        name:
+          - curl
+          - vim
+        state: present
+
+    - name: creer un fichier de test
+      copy:
+        content: "VM configuree par Ansible"
+        dest: /home/ubuntu/test.txt

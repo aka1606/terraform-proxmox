@@ -1,0 +1,15 @@
+---
+- name: Joindre les workers au cluster
+  hosts: workers
+  become: false
+
+  tasks:
+    - name: Lire la commande join
+      become: false
+      local_action: slurp src=/tmp/join_command.sh
+      register: join_cmd
+
+    - name: Joindre le cluster
+      command: "{{ join_cmd.content | b64decode | trim }}"
+      args:
+        creates: /etc/kubernetes/kubelet.conf

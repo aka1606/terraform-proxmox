@@ -1,0 +1,33 @@
+---
+- name: Prérequis K8s
+  hosts: k8s
+  become: true
+
+  tasks:
+    - name: Désactiver le swap
+      command: swapoff -a
+
+    - name: Désactiver le swap au démarrage
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s.*)$'
+        replace: '# \1'
+
+    - name: Charger les modules kernel
+      modprobe:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - overlay
+        - br_netfilter
+
+    - name: Paramètres sysctl pour K8s
+      sysctl:
+        name: "{{ item.key }}"
+        value: "{{ item.value }}"
+        sysctl_set: true
+        reload: true
+      loop:
+        - { key: "net.bridge.bridge-nf-call-iptables", value: "1" }
+        - { key: "net.bridge.bridge-nf-call-ip6tables", value: "1" }
+        - { key: "net.ipv4.ip_forward", value: "1" }

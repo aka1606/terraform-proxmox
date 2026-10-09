@@ -1,0 +1,111 @@
+---
+- name: Installer containerd et K8s
+  hosts: k8s
+  become: true
+
+  tasks:
+    - name: Libérer les locks apt si bloqués
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /var/lib/dpkg/lock-frontend
+        - /var/lib/dpkg/lock
+        - /var/lib/apt/lists/lock
+        - /var/cache/apt/archives/lock
+
+    - name: Réparer les dépendances cassées
+      command: dpkg --configure -a
+      ignore_errors: true
+
+    - name: Nettoyer les paquets inutiles
+      apt:
+        autoremove: yes
+        purge: yes
+
+    - name: Installer les dépendances
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+        state: present
+        update_cache: true
+      register: result
+      retries: 3
+      delay: 10
+      until: result is succeeded
+
+    - name: Installer containerd
+      apt:
+        name: containerd
+        state: present
+      register: result
+      retries: 3
+      delay: 10
+      until: result is succeeded
+
+    - name: Créer le dossier de config containerd
+      file:
+        path: /etc/containerd
+        state: directory
+
+    - name: Générer la config containerd par défaut
+      shell: containerd config default > /etc/containerd/config.toml
+
+    - name: Activer SystemdCgroup dans containerd
+      replace:
+        path: /etc/containerd/config.toml
+        regexp: 'SystemdCgroup = false'
+        replace: 'SystemdCgroup = true'
+
+    - name: Redémarrer containerd
+      service:
+        name: containerd
+        state: restarted
+        enabled: true
+
+    - name: Créer le dossier keyrings
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Ajouter la clé GPG K8s
+      shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      register: result
+      retries: 3
+      delay: 15
+      until: result is succeeded
+
+    - name: Ajouter le repo K8s
+      apt_repository:
+        repo: "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /"
+        state: present
+        filename: kubernetes
+
+    - name: Installer kubeadm kubelet kubectl
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+        update_cache: true
+      register: result
+      retries: 3
+      delay: 15
+      until: result is succeeded
+
+    - name: Bloquer les mises à jour automatiques de K8s
+      dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop:
+        - kubelet
+        - kubeadm
+        - kubectl
